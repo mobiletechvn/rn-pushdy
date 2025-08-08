@@ -30,6 +30,8 @@ static dispatch_once_t onceToken;
 - (void)emitEventWithName:(NSString *)name body:(NSDictionary *)body {
   if ([name isEqualToString:@"onNotificationOpened"]) {
     [self emitOnNotificationOpened:body];
+  } else if ([name isEqualToString:@"onNotificationReceived"]) {
+    [self emitOnNotificationReceived:body];
   }
 
   // Add other events if needed
