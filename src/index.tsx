@@ -823,7 +823,7 @@ class RNPushdyWrapper {
      */
     if (isAndroid) {
       // Read more about "enableFlag" at com.reactNativePushdy.PushdySdk#subscribedEventNames
-      this.subscribers['enableFlag'] = eventEmitter.addListener(
+      this.subscribers.enableFlag = eventEmitter.addListener(
         'enableFlag',
         () => {
           /* empty callback to avoid unused variable warning */
@@ -833,12 +833,23 @@ class RNPushdyWrapper {
     }
   }
 
-  onNotificationOpened = (handler: (notification: PushdyNotification) => void) => {
+  onNotificationOpened = (
+    handler: (notification: PushdyNotification) => void
+  ) => {
     RnPushdy.onNotificationOpened((notificationRaw) => {
       const notification = new PushdyNotification(notificationRaw);
       handler(notification);
-    })
-  }
+    });
+  };
+
+  onNotificationReceived = (
+    handler: (notification: PushdyNotification) => void
+  ) => {
+    RnPushdy.onNotificationReceived((notificationRaw) => {
+      const notification = new PushdyNotification(notificationRaw);
+      handler(notification);
+    });
+  };
 
   stopSubscribers() {
     const keys = Object.keys(this.subscribers);

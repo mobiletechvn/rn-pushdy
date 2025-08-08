@@ -86,9 +86,9 @@ export interface Spec extends TurboModule {
   trackBanner(bannerId: string, type: string): Promise<boolean>;
   getBannerData(bannerId: string): Promise<{ [key: string]: Object }>;
 
-
   // events
   readonly onNotificationOpened: EventEmitter<{ [key: string]: Object }>;
+  readonly onNotificationReceived: EventEmitter<{ [key: string]: Object }>;
 }
 
 export default TurboModuleRegistry.getEnforcing<Spec>('RnPushdy');
