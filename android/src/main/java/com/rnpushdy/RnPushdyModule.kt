@@ -29,6 +29,8 @@ class RnPushdyModule(reactContext: ReactApplicationContext) :
         Log.d("Pushdy", "Event: $eventName | Params: $params")
         if (eventName == "onNotificationOpened") {
           emitOnNotificationOpened(params)
+        } else if (eventName == "onNotificationReceived") {
+          emitOnNotificationReceived(params)
         }
       }
     }
