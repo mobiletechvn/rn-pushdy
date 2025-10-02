@@ -22,9 +22,12 @@ import org.json.JSONException
 import org.json.JSONObject
 
 object  PushdySdkManager {
-  fun registerActivityLifecycleCallbacks(context: Context) {
+  fun registerActivityLifecycleCallbacks(context: Context, clientKey: String) {
     Log.d("RNPushdy", "registerActivityLifecycleCallbacks onActivityCreated")
+    //TODO: Change initWith(context) to use better function name like initSdk or registerSdk
+    // Because initWith(context) is misleading with other initWith(context, clientKey, ...)
     Pushdy.initWith(context)
+    Pushdy.initWith(context, clientKey, null)
   }
 }
 
