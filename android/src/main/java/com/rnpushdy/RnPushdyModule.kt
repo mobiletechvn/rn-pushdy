@@ -1,5 +1,7 @@
 package com.rnpushdy
 
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.Promise
@@ -7,6 +9,7 @@ import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReadableArray
 import com.facebook.react.bridge.ReadableMap
 import com.facebook.react.bridge.ReadableType
+import com.facebook.react.bridge.WritableMap
 import com.facebook.react.bridge.WritableNativeArray
 import com.facebook.react.module.annotations.ReactModule
 import com.google.gson.Gson
@@ -15,6 +18,7 @@ import com.google.gson.JsonObject
 import com.reactNativePushdy.PushdySdk
 import com.reactNativePushdy.RNPushdyData.convertDynamicFieldToJavaType
 import com.reactNativePushdy.ReactNativeJson.convertMapToWritableMap
+import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.TimeUnit
 
 
@@ -23,15 +27,88 @@ class RnPushdyModule(reactContext: ReactApplicationContext) :
   NativeRnPushdySpec(reactContext) {
   private val pushdySdk: PushdySdk =  PushdySdk(reactContext)
 
+  // Queue for pending events when bridge is not ready
+  private val pendingEvents = ConcurrentLinkedQueue<Pair<String, ReadableMap?>>()
+  private val handler = Handler(Looper.getMainLooper())
+  private var isProcessingQueue = false
+
+
   init {
     pushdySdk.setEventEmitter { eventName, params ->
       run {
         Log.d("Pushdy", "Event: $eventName | Params: $params")
         if (eventName == "onNotificationOpened") {
+          emitOrQueueEvent("onNotificationOpened", params)
+        } else if (eventName == "onNotificationReceived") {
+          emitOrQueueEvent("onNotificationReceived", params)
+        }
+      }
+    }
+  }
+
+  private fun emitOrQueueEvent(eventName: String, params: ReadableMap?) {
+    try {
+      // Check if React context is ready
+      if (reactApplicationContext.hasActiveCatalystInstance()) {
+        Log.d("Pushdy", "Bridge ready, emitting: $eventName")
+        if (eventName == "onNotificationOpened") {
           emitOnNotificationOpened(params)
         } else if (eventName == "onNotificationReceived") {
           emitOnNotificationReceived(params)
         }
+
+        // Process any queued events after successfully emitting
+        processQueuedEvents()
+      } else {
+        // Queue the event for later
+        Log.w("Pushdy", "Bridge not ready, queueing: $eventName")
+        pendingEvents.offer(Pair(eventName, params))
+        scheduleQueueProcessing()
+      }
+    } catch (e: Exception) {
+      // If emission fails, queue it
+      Log.e("Pushdy", "Failed to emit $eventName, queueing: ${e.message}")
+      pendingEvents.offer(Pair(eventName, params))
+      scheduleQueueProcessing()
+    }
+  }
+
+  private fun scheduleQueueProcessing() {
+    if (!isProcessingQueue && pendingEvents.isNotEmpty()) {
+      isProcessingQueue = true
+      handler.postDelayed({
+        processQueuedEvents()
+      }, 500)
+    }
+  }
+
+  private fun processQueuedEvents() {
+    if (!reactApplicationContext.hasActiveCatalystInstance()) {
+      Log.d("Pushdy", "Bridge still not ready, will retry")
+      isProcessingQueue = false
+      if (pendingEvents.isNotEmpty()) {
+        scheduleQueueProcessing()
+      }
+      return
+    }
+
+    Log.d("Pushdy", "Processing ${pendingEvents.size} queued events")
+    isProcessingQueue = false
+
+    while (pendingEvents.isNotEmpty()) {
+      val (eventName, params) = pendingEvents.poll() ?: break
+      try {
+        Log.d("Pushdy", "Emitting queued event: $eventName")
+        if (eventName == "onNotificationOpened") {
+          emitOnNotificationOpened(params)
+        } else if (eventName == "onNotificationReceived") {
+          emitOnNotificationReceived(params)
+        }
+      } catch (e: Exception) {
+        Log.e("Pushdy", "Failed to emit queued event $eventName: ${e.message}")
+        // Re-queue if it fails
+        pendingEvents.offer(Pair(eventName, params))
+        break
       }
     }
   }
@@ -233,6 +310,10 @@ class RnPushdyModule(reactContext: ReactApplicationContext) :
     }
 
     pushdySdk.setSubscribedEvents(eventNames)
+
+    // Trigger processing of queued events now that JS listeners are ready
+    Log.d("Pushdy", "JS listeners registered, processing queue")
+    processQueuedEvents()
 
     promise!!.resolve(true)
   }
