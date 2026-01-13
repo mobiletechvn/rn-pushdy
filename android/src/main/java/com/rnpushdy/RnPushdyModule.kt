@@ -31,6 +31,7 @@ class RnPushdyModule(reactContext: ReactApplicationContext) :
   private val pendingEvents = ConcurrentLinkedQueue<Pair<String, ReadableMap?>>()
   private val handler = Handler(Looper.getMainLooper())
   private var isProcessingQueue = false
+  private var isReadyToSendEvent = false
 
 
   init {
@@ -48,9 +49,9 @@ class RnPushdyModule(reactContext: ReactApplicationContext) :
 
   private fun emitOrQueueEvent(eventName: String, params: ReadableMap?) {
     try {
-      // Check if React context is ready
-      if (reactApplicationContext.hasActiveCatalystInstance()) {
-        Log.d("Pushdy", "Bridge ready, emitting: $eventName")
+      // Check if ready to send events
+      if (isReadyToSendEvent) {
+        Log.d("Pushdy", "Ready to send, emitting: $eventName")
         if (eventName == "onNotificationOpened") {
           emitOnNotificationOpened(params)
         } else if (eventName == "onNotificationReceived") {
@@ -83,8 +84,8 @@ class RnPushdyModule(reactContext: ReactApplicationContext) :
   }
 
   private fun processQueuedEvents() {
-    if (!reactApplicationContext.hasActiveCatalystInstance()) {
-      Log.d("Pushdy", "Bridge still not ready, will retry")
+    if (!isReadyToSendEvent) {
+      Log.d("Pushdy", "Not ready to send events yet, will retry")
       isProcessingQueue = false
       if (pendingEvents.isNotEmpty()) {
         scheduleQueueProcessing()
@@ -255,6 +256,10 @@ class RnPushdyModule(reactContext: ReactApplicationContext) :
   }
 
   override fun getInitialNotification(promise: Promise?) {
+    // Mark as ready to send events and process queue
+    isReadyToSendEvent = true
+    Log.d("Pushdy", "getInitialNotification called, marking ready and processing queue")
+    processQueuedEvents()
     promise?.resolve(pushdySdk.getInitialNotification());
   }
 
