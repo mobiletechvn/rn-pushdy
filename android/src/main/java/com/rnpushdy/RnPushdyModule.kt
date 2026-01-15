@@ -257,8 +257,10 @@ class RnPushdyModule(reactContext: ReactApplicationContext) :
 
   override fun getInitialNotification(promise: Promise?) {
     // Mark as ready to send events and process queue
-    isReadyToSendEvent = true
-    Log.d("Pushdy", "getInitialNotification called, marking ready and processing queue")
+    handler.postDelayed({
+      isReadyToSendEvent = true;
+      Log.d("Pushdy", "getInitialNotification called, marking ready and processing queue");
+    }, 1000)
     processQueuedEvents()
     promise?.resolve(pushdySdk.getInitialNotification());
   }
