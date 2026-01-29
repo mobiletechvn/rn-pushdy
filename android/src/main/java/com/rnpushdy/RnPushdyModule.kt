@@ -34,19 +34,6 @@ class RnPushdyModule(reactContext: ReactApplicationContext) :
   private var isReadyToSendEvent = false
 
 
-  init {
-    pushdySdk.setEventEmitter { eventName, params ->
-      run {
-        Log.d("Pushdy", "Event: $eventName | Params: $params")
-        if (eventName == "onNotificationOpened") {
-          emitOrQueueEvent("onNotificationOpened", params)
-        } else if (eventName == "onNotificationReceived") {
-          emitOrQueueEvent("onNotificationReceived", params)
-        }
-      }
-    }
-  }
-
   private fun emitOrQueueEvent(eventName: String, params: ReadableMap?) {
     try {
       // Check if ready to send events
@@ -148,6 +135,17 @@ class RnPushdyModule(reactContext: ReactApplicationContext) :
     try {
       if (options != null) {
         pushdySdk.initPushdy(options)
+
+        pushdySdk.setEventEmitter { eventName, params ->
+          run {
+            Log.d("Pushdy", "Event: $eventName | Params: $params")
+            if (eventName == "onNotificationOpened") {
+              emitOrQueueEvent("onNotificationOpened", params)
+            } else if (eventName == "onNotificationReceived") {
+              emitOrQueueEvent("onNotificationReceived", params)
+            }
+          }
+        }
       }
       promise?.resolve(true)
     } catch (e: Exception) {
