@@ -11,6 +11,7 @@ import com.facebook.react.bridge.ReadableMap
 import com.facebook.react.bridge.ReadableType
 import com.facebook.react.bridge.WritableMap
 import com.facebook.react.bridge.WritableNativeArray
+import com.facebook.react.common.LifecycleState
 import com.facebook.react.module.annotations.ReactModule
 import com.google.gson.Gson
 import com.google.gson.JsonArray
@@ -34,9 +35,22 @@ class RnPushdyModule(reactContext: ReactApplicationContext) :
   private var isReadyToSendEvent = false
 
 
+  private fun canEmitEvent(): Boolean {
+    val context = reactApplicationContext ?: return false
+    return context.hasActiveReactInstance() &&
+           context.lifecycleState == LifecycleState.RESUMED
+  }
+
   private fun emitOrQueueEvent(eventName: String, params: ReadableMap?) {
     try {
-      // Check if ready to send events
+      // Check if React context is valid and ready to send events
+      if (!canEmitEvent()) {
+        Log.w("Pushdy", "React context not valid, queueing: $eventName")
+        pendingEvents.offer(Pair(eventName, params))
+        scheduleQueueProcessing()
+        return
+      }
+
       if (isReadyToSendEvent) {
         Log.d("Pushdy", "Ready to send, emitting: $eventName")
         if (eventName == "onNotificationOpened") {
@@ -71,7 +85,7 @@ class RnPushdyModule(reactContext: ReactApplicationContext) :
   }
 
   private fun processQueuedEvents() {
-    if (!isReadyToSendEvent) {
+    if (!canEmitEvent() || !isReadyToSendEvent) {
       Log.d("Pushdy", "Not ready to send events yet, will retry")
       isProcessingQueue = false
       if (pendingEvents.isNotEmpty()) {
@@ -86,6 +100,12 @@ class RnPushdyModule(reactContext: ReactApplicationContext) :
     while (pendingEvents.isNotEmpty()) {
       val (eventName, params) = pendingEvents.poll() ?: break
       try {
+        if (!canEmitEvent()) {
+          Log.w("Pushdy", "React context became invalid, re-queueing remaining events")
+          pendingEvents.offer(Pair(eventName, params))
+          break
+        }
+
         Log.d("Pushdy", "Emitting queued event: $eventName")
         if (eventName == "onNotificationOpened") {
           emitOnNotificationOpened(params)
@@ -134,8 +154,12 @@ class RnPushdyModule(reactContext: ReactApplicationContext) :
   override fun initPushdy(options: ReadableMap?, promise: Promise?) {
     try {
       if (options != null) {
+        // Reset ready state to handle CodePush restarts
+        isReadyToSendEvent = false
+
         pushdySdk.initPushdy(options)
 
+        // Always set a fresh event emitter to handle CodePush restarts
         pushdySdk.setEventEmitter { eventName, params ->
           run {
             Log.d("Pushdy", "Event: $eventName | Params: $params")
@@ -419,6 +443,22 @@ class RnPushdyModule(reactContext: ReactApplicationContext) :
     val writableMap = convertMapToWritableMap(map)
 
     promise!!.resolve(writableMap)
+  }
+
+  override fun invalidate() {
+    super.invalidate()
+    Log.d("Pushdy", "Module invalidated, clearing event emitter")
+
+    // Clear event emitter to prevent stale context usage
+    pushdySdk.setEventEmitter { _, _ ->
+      Log.w("Pushdy", "Event emitter called after invalidation, ignoring")
+    }
+
+    // Clear pending events and reset state
+    pendingEvents.clear()
+    isReadyToSendEvent = false
+    isProcessingQueue = false
+    handler.removeCallbacksAndMessages(null)
   }
 
   companion object {
